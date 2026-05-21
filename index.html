@@ -18,7 +18,10 @@
             background: #121212; padding: 25px; width: 100%; max-width: 400px; 
             border-radius: 8px; border: 1px solid #333; margin: auto;
         }
-        .admin-dashboard { display: none; /* Hidden until logged in */ flex-wrap: wrap; gap: 20px; justify-content: center; }
+        /* New wider box for the player list */
+        .list-box { max-width: 800px; margin-top: 20px; }
+        
+        .admin-dashboard { display: none; flex-wrap: wrap; gap: 20px; justify-content: center; }
         
         h3 { color: #ff8c00; margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 10px; }
         input, button { 
@@ -31,6 +34,13 @@
         button:hover { background: #e67e00; }
         .logout-btn { background: #333; color: white; margin-top: 20px;}
         .logout-btn:hover { background: #555; }
+
+        /* Table styling for admin list */
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 10px; border-bottom: 1px solid #2a2a2a; text-align: left; font-size: 14px; }
+        th { color: #aaa; }
+        .action-btn { background: #333; color: #ff8c00; padding: 6px 12px; font-size: 12px; width: auto; margin: 0; }
+        .action-btn:hover { background: #444; }
     </style>
 </head>
 <body>
@@ -48,30 +58,51 @@
 </div>
 
 <div id="adminDashboard" class="admin-dashboard">
-    <div class="container-box">
-        <h3>1. Register New Player</h3>
-        <input type="text" id="newName" placeholder="Player Name">
-        <input type="text" id="newMobile" placeholder="Mobile Number (Used as ID)">
-        <button onclick="registerPlayer()">Register Player</button>
+    
+    <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; width: 100%;">
+        <div class="container-box" style="margin: 0;">
+            <h3>1. Register New Player</h3>
+            <input type="text" id="newName" placeholder="Player Name">
+            <input type="text" id="newMobile" placeholder="Mobile Number (Used as ID)">
+            <button onclick="registerPlayer()">Register Player</button>
+        </div>
+
+        <div class="container-box" style="margin: 0;" id="updateSection">
+            <h3>2. Update Player Stats</h3>
+            <input type="text" id="updateMobile" placeholder="Enter Mobile Number to update" readonly style="background:#222; color:#aaa;" title="Select a player from the list below">
+            <hr style="border: 0; border-top: 1px solid #333; margin: 15px 0;">
+            <label style="font-size: 14px; color: #aaa;">Enter amounts to ADD to current score:</label>
+            <input type="number" id="addWins" placeholder="Add Win Count (e.g. 1)" value="0">
+            <input type="number" id="addKills" placeholder="Add Total Kills" value="0">
+            <input type="number" id="addBalance" placeholder="Add Balance in Rs" value="0">
+            <button onclick="updateStats()">Update Stats</button>
+            <button class="logout-btn" onclick="logoutAdmin()">Logout</button>
+        </div>
     </div>
 
-    <div class="container-box">
-        <h3>2. Update Player Stats</h3>
-        <input type="text" id="updateMobile" placeholder="Enter Mobile Number to update">
-        <hr style="border: 0; border-top: 1px solid #333; margin: 15px 0;">
-        <label style="font-size: 14px; color: #aaa;">Enter amounts to ADD to current score:</label>
-        <input type="number" id="addWins" placeholder="Add Win Count (e.g. 1)" value="0">
-        <input type="number" id="addKills" placeholder="Add Total Kills" value="0">
-        <input type="number" id="addBalance" placeholder="Add Balance in Rs" value="0">
-        <button onclick="updateStats()">Update Stats</button>
-        <button class="logout-btn" onclick="logoutAdmin()">Logout</button>
+    <div class="container-box list-box">
+        <h3>3. Manage Registered Players</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Mobile</th>
+                    <th>Wins</th>
+                    <th>Kills</th>
+                    <th>Bal (₹)</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="adminPlayerList">
+                </tbody>
+        </table>
     </div>
+
 </div>
 
 <script type="module">
-    // We now import Auth modules in addition to Firestore modules
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-    import { getFirestore, doc, setDoc, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+    import { getFirestore, doc, setDoc, updateDoc, increment, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
     import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
     const firebaseConfig = {
@@ -87,40 +118,70 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const auth = getAuth(app);
+    let unsubscribePlayers = null;
 
-    // Auth State Observer - Hides/Shows the dashboard based on login status
+    // Auth State Observer
     onAuthStateChanged(auth, (user) => {
         if (user) {
             document.getElementById('loginSection').style.display = 'none';
             document.getElementById('adminDashboard').style.display = 'flex';
+            loadAdminPlayerList(); // Load list when logged in
         } else {
             document.getElementById('loginSection').style.display = 'block';
             document.getElementById('adminDashboard').style.display = 'none';
+            if(unsubscribePlayers) unsubscribePlayers(); // Stop listening if logged out
         }
     });
 
-    // Login Function
+    // Real-time Player List for Admin
+    function loadAdminPlayerList() {
+        const playersRef = collection(db, "players");
+        unsubscribePlayers = onSnapshot(playersRef, (snapshot) => {
+            const tbody = document.getElementById("adminPlayerList");
+            tbody.innerHTML = ""; 
+            
+            snapshot.forEach((doc) => {
+                const player = doc.data();
+                const row = document.createElement("tr");
+                row.innerHTML = `
+                    <td><strong>${player.name}</strong></td>
+                    <td style="color:#aaa;">${player.mobile}</td>
+                    <td>${player.win_count}</td>
+                    <td>${player.kill_count}</td>
+                    <td style="color: #4CAF50;">₹${player.balance_rs}</td>
+                    <td>
+                        <button class="action-btn" onclick="selectPlayerForUpdate('${player.mobile}')">Update</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        });
+    }
+
+    // Select Player Function (Fills the update box)
+    window.selectPlayerForUpdate = function(mobile) {
+        document.getElementById("updateMobile").value = mobile;
+        // Scroll to the update section smoothly
+        document.getElementById("updateSection").scrollIntoView({ behavior: 'smooth' });
+        // Highlight the wins input for quick editing
+        document.getElementById("addWins").focus();
+        document.getElementById("addWins").select();
+    }
+
     window.loginAdmin = async function() {
         const email = document.getElementById("adminEmail").value;
         const password = document.getElementById("adminPassword").value;
         try {
             await signInWithEmailAndPassword(auth, email, password);
-            // Observer above will automatically show the dashboard
         } catch (error) {
             alert("Login Failed: " + error.message);
         }
     }
 
-    // Logout Function
     window.logoutAdmin = async function() {
-        try {
-            await signOut(auth);
-        } catch (error) {
-            alert("Error logging out.");
-        }
+        try { await signOut(auth); } catch (error) { alert("Error logging out."); }
     }
 
-    // Register Player Logic (Same as before)
     window.registerPlayer = async function() {
         const name = document.getElementById("newName").value.trim();
         const mobile = document.getElementById("newMobile").value.trim();
@@ -138,19 +199,17 @@
             document.getElementById("newName").value = "";
             document.getElementById("newMobile").value = "";
         } catch (e) {
-            console.error("Error: ", e);
             alert("Registration failed. Ensure you are logged in.");
         }
     }
 
-    // Update Stats Logic (Same as before)
     window.updateStats = async function() {
         const mobile = document.getElementById("updateMobile").value.trim();
         const winsToAdd = parseInt(document.getElementById("addWins").value) || 0;
         const killsToAdd = parseInt(document.getElementById("addKills").value) || 0;
         const balanceToAdd = parseInt(document.getElementById("addBalance").value) || 0;
 
-        if(!mobile) return alert("Please enter the Mobile Number!");
+        if(!mobile) return alert("Please select a player from the list first!");
 
         try {
             const playerRef = doc(db, "players", mobile);
@@ -160,13 +219,14 @@
                 balance_rs: increment(balanceToAdd)
             });
             alert("Player Stats Updated Successfully!");
+            
+            // Reset fields after successful update
             document.getElementById("updateMobile").value = "";
             document.getElementById("addWins").value = "0";
             document.getElementById("addKills").value = "0";
             document.getElementById("addBalance").value = "0";
         } catch (e) {
-            console.error("Error: ", e);
-            alert("Update failed. Ensure mobile is correct and you are logged in.");
+            alert("Update failed.");
         }
     }
 </script>
