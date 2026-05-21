@@ -18,17 +18,16 @@
             background: #121212; padding: 25px; width: 100%; max-width: 400px; 
             border-radius: 8px; border: 1px solid #333; margin: auto;
         }
-        .list-box { max-width: 900px; margin-top: 20px; }
-        
+        .list-box { max-width: 1100px; margin-top: 20px; }
         .admin-dashboard { display: none; flex-wrap: wrap; gap: 20px; justify-content: center; }
         
         h3 { color: #ff8c00; margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 10px; }
-        input, button { 
+        input, select, button { 
             width: 100%; padding: 12px; margin: 10px 0; 
             box-sizing: border-box; border-radius: 5px; border: 1px solid #333; 
             background: #1a1a1a; color: white; font-size: 16px;
         }
-        input:focus { outline: none; border-color: #ff8c00; }
+        input:focus, select:focus { outline: none; border-color: #ff8c00; }
         
         button { background: #ff8c00; color: black; font-weight: bold; cursor: pointer; border: none; transition: 0.2s; }
         button:hover { background: #e67e00; }
@@ -39,16 +38,17 @@
         th, td { padding: 10px; border-bottom: 1px solid #2a2a2a; text-align: left; font-size: 14px; }
         th { color: #aaa; }
         
-        /* Action Buttons Styling */
         .action-group { display: flex; gap: 5px; }
         .action-btn { padding: 6px 10px; font-size: 12px; width: auto; margin: 0; border-radius: 4px; color: white; }
         .btn-update { background: #ff8c00; color: black; }
         .btn-edit { background: #4a90e2; }
         .btn-delete { background: #e74c3c; }
-        .action-btn:hover { opacity: 0.8; }
         
-        /* Search Bar specific styling */
         .search-bar { background: #222; border-color: #555; }
+        .status-badge { padding: 3px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+        .bg-active { background: #4CAF50; color: white; }
+        .bg-deactive { background: #555; color: white; }
+        .adm-tag { background: #555; font-size: 9px; padding: 1px 4px; border-radius: 3px; color: #fff; margin-left: 5px;}
     </style>
 </head>
 <body>
@@ -72,6 +72,7 @@
             <h3>1. Register New Player</h3>
             <input type="text" id="newName" placeholder="Player Name">
             <input type="text" id="newMobile" placeholder="Mobile Number">
+            <input type="text" id="newTag" placeholder="Player Tag (e.g. PRO, NEW) - Optional">
             <button onclick="registerPlayer()">Register Player</button>
         </div>
 
@@ -79,20 +80,34 @@
             <h3>2. Update Player Stats</h3>
             <input type="text" id="updateMobile" placeholder="Select player below..." readonly style="background:#222; color:#aaa;">
             <hr style="border: 0; border-top: 1px solid #333; margin: 15px 0;">
-            <label style="font-size: 14px; color: #aaa;">Enter amounts to ADD:</label>
-            <input type="number" id="addWins" placeholder="Add Win Count (e.g. 1)" value="0">
+            <label style="font-size: 14px; color: #aaa;">Enter amounts to ADD/SUBTRACT:</label>
+            <input type="number" id="addWins" placeholder="Add Win Count (use -1 to subtract)" value="0">
             <input type="number" id="addKills" placeholder="Add Total Kills" value="0">
+            <input type="number" id="addDeposit" placeholder="Add Deposit Amount" value="0">
             <input type="number" id="addBalance" placeholder="Add Balance in Rs" value="0">
             <button onclick="updateStats()">Update Stats</button>
         </div>
 
         <div class="container-box" style="margin: 0; display: none; border-color: #4a90e2;" id="editSection">
-            <h3 style="color: #4a90e2;">📝 Edit Player Profile</h3>
+            <h3 style="color: #4a90e2;">📝 Edit Details & Status</h3>
             <input type="hidden" id="editOldMobile">
-            <label style="font-size: 14px; color: #aaa;">New Name:</label>
-            <input type="text" id="editName" placeholder="New Player Name">
-            <label style="font-size: 14px; color: #aaa;">New Mobile:</label>
-            <input type="text" id="editMobile" placeholder="New Mobile Number">
+            
+            <label style="font-size: 14px; color: #aaa;">Player Name:</label>
+            <input type="text" id="editName" placeholder="Player Name">
+            
+            <label style="font-size: 14px; color: #aaa;">Mobile Number:</label>
+            <input type="text" id="editMobile" placeholder="Mobile Number">
+
+            <label style="font-size: 14px; color: #aaa;">Custom Tag:</label>
+            <input type="text" id="editTag" placeholder="Player Tag (PRO, ELITE, etc.)">
+            
+            <label style="font-size: 14px; color: #aaa;">Player Status:</label>
+            <select id="editStatus">
+                <option value="Auto">Auto (Active if score > 0)</option>
+                <option value="Active">Force Active</option>
+                <option value="Deactive">Force Deactive</option>
+            </select>
+
             <button style="background: #4a90e2; color: white;" onclick="savePlayerProfile()">Save Changes</button>
             <button style="background: #333; color: white;" onclick="cancelEdit()">Cancel</button>
         </div>
@@ -108,8 +123,10 @@
                 <tr>
                     <th>Name</th>
                     <th>Mobile</th>
+                    <th>Status</th>
                     <th>Wins</th>
                     <th>Kills</th>
+                    <th>Deposit</th>
                     <th>Bal (₹)</th>
                     <th>Actions</th>
                 </tr>
@@ -126,7 +143,7 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-    import { getFirestore, doc, setDoc, updateDoc, increment, collection, onSnapshot, deleteDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+    import { doc, setDoc, updateDoc, increment, collection, onSnapshot, deleteDoc, getDoc, getFirestore } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
     import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
     const firebaseConfig = {
@@ -158,77 +175,87 @@
 
     function loadAdminPlayerList() {
         const playersRef = collection(db, "players");
-        // We still fetch data in real-time
         unsubscribePlayers = onSnapshot(playersRef, (snapshot) => {
             const tbody = document.getElementById("adminPlayerList");
             tbody.innerHTML = ""; 
             
-            snapshot.forEach((doc) => {
-                const player = doc.data();
+            let dataArr = [];
+            snapshot.forEach((doc) => dataArr.push(doc.data()));
+            dataArr.sort((a, b) => b.win_count - a.win_count);
+
+            dataArr.forEach((player) => {
+                const dbStatus = player.status || "Auto";
+                let displayStatus = dbStatus;
+                let bgClass = "bg-deactive";
+                
+                if (dbStatus === "Auto") {
+                    const hasPlayed = (player.win_count > 0 || player.kill_count > 0 || player.balance_rs > 0 || player.deposit_rs > 0);
+                    displayStatus = hasPlayed ? "Auto (Active)" : "Auto (Deact)";
+                    bgClass = hasPlayed ? "bg-active" : "bg-deactive";
+                } else if (dbStatus === "Active") {
+                    bgClass = "bg-active";
+                }
+
                 const row = document.createElement("tr");
                 row.innerHTML = `
-                    <td class="admin-player-name"><strong>${player.name}</strong></td>
+                    <td class="admin-player-name">
+                        <strong>${player.name}</strong>
+                        ${player.tag ? `<span class="adm-tag">${player.tag}</span>` : ''}
+                    </td>
                     <td class="admin-player-mobile" style="color:#aaa;">${player.mobile}</td>
-                    <td>${player.win_count}</td>
-                    <td>${player.kill_count}</td>
-                    <td style="color: #4CAF50;">₹${player.balance_rs}</td>
+                    <td><span class="status-badge ${bgClass}">${displayStatus}</span></td>
+                    <td>${player.win_count || 0}</td>
+                    <td>${player.kill_count || 0}</td>
+                    <td>₹${player.deposit_rs || 0}</td>
+                    <td style="color: #4CAF50;">₹${player.balance_rs || 0}</td>
                     <td class="action-group">
                         <button class="action-btn btn-update" onclick="selectPlayerForUpdate('${player.mobile}')">Stats</button>
-                        <button class="action-btn btn-edit" onclick="selectPlayerForEdit('${player.mobile}', '${player.name}')">Edit</button>
-                        <button class="action-btn btn-delete" onclick="deletePlayer('${player.mobile}')">Delete</button>
+                        <button class="action-btn btn-edit" onclick="selectPlayerForEdit('${player.mobile}', '${player.name}', '${player.status || 'Auto'}', '${player.tag || ''}')">Edit</button>
+                        <button class="action-btn btn-delete" onclick="deletePlayer('${player.mobile}')">Del</button>
                     </td>
                 `;
                 tbody.appendChild(row);
             });
-            // Re-apply search filter in case data updates while user is searching
             searchAdminPlayer();
         });
     }
 
-    // --- NEW SEARCH LOGIC FOR ADMIN ---
     window.searchAdminPlayer = function() {
         let filter = document.getElementById('adminSearchInput').value.toUpperCase();
         let rows = document.getElementById("adminPlayerList").getElementsByTagName('tr');
-
         for (let i = 0; i < rows.length; i++) {
             let nameCell = rows[i].getElementsByClassName("admin-player-name")[0];
             let mobileCell = rows[i].getElementsByClassName("admin-player-mobile")[0];
-            
             if (nameCell || mobileCell) {
                 let name = nameCell.textContent || nameCell.innerText;
                 let mobile = mobileCell.textContent || mobileCell.innerText;
-                
                 if (name.toUpperCase().indexOf(filter) > -1 || mobile.indexOf(filter) > -1) {
                     rows[i].style.display = "";
-                } else {
-                    rows[i].style.display = "none";
-                }
+                } else { rows[i].style.display = "none"; }
             }       
         }
     }
 
-    // --- ACTIONS ---
     window.selectPlayerForUpdate = function(mobile) {
         document.getElementById("updateMobile").value = mobile;
         document.getElementById("updateSection").scrollIntoView({ behavior: 'smooth' });
     }
 
-    window.selectPlayerForEdit = function(mobile, name) {
+    window.selectPlayerForEdit = function(mobile, name, currentStatus, currentTag) {
         document.getElementById("editSection").style.display = "block";
         document.getElementById("editOldMobile").value = mobile;
         document.getElementById("editName").value = name;
         document.getElementById("editMobile").value = mobile;
+        document.getElementById("editTag").value = currentTag;
+        document.getElementById("editStatus").value = currentStatus;
         document.getElementById("editSection").scrollIntoView({ behavior: 'smooth' });
     }
 
-    window.cancelEdit = function() {
-        document.getElementById("editSection").style.display = "none";
-    }
+    window.cancelEdit = function() { document.getElementById("editSection").style.display = "none"; }
 
     window.deletePlayer = async function(mobile) {
-        if(confirm("Are you sure you want to delete this player? All data will be lost forever.")) {
-            try { await deleteDoc(doc(db, "players", mobile)); } 
-            catch(e) { alert("Error deleting player."); }
+        if(confirm("Delete this player permanently?")) {
+            try { await deleteDoc(doc(db, "players", mobile)); } catch(e) { alert("Error deleting."); }
         }
     }
 
@@ -236,45 +263,42 @@
         const oldMobile = document.getElementById("editOldMobile").value;
         const newName = document.getElementById("editName").value.trim();
         const newMobile = document.getElementById("editMobile").value.trim();
+        const newStatus = document.getElementById("editStatus").value;
+        const newTag = document.getElementById("editTag").value.trim();
 
         if(!newName || !newMobile) return alert("Fields cannot be empty!");
 
         try {
             if(oldMobile === newMobile) {
-                await updateDoc(doc(db, "players", oldMobile), { name: newName });
+                await updateDoc(doc(db, "players", oldMobile), { name: newName, status: newStatus, tag: newTag });
             } else {
                 const oldDocRef = doc(db, "players", oldMobile);
                 const oldSnap = await getDoc(oldDocRef);
-                
                 if(oldSnap.exists()) {
                     const data = oldSnap.data();
-                    data.name = newName;
-                    data.mobile = newMobile; 
-                    
+                    data.name = newName; data.mobile = newMobile; data.status = newStatus; data.tag = newTag;
                     await setDoc(doc(db, "players", newMobile), data); 
                     await deleteDoc(oldDocRef); 
                 }
             }
-            alert("Profile Updated Successfully!");
+            alert("Profile Updated!");
             document.getElementById("editSection").style.display = "none";
         } catch(e) { alert("Error updating profile."); }
     }
 
-    // --- EXISTING LOGIC ---
     window.loginAdmin = async function() {
-        try { await signInWithEmailAndPassword(auth, document.getElementById("adminEmail").value, document.getElementById("adminPassword").value); } 
-        catch (e) { alert("Login Failed"); }
+        try { await signInWithEmailAndPassword(auth, document.getElementById("adminEmail").value, document.getElementById("adminPassword").value); } catch (e) { alert("Login Failed"); }
     }
-
     window.logoutAdmin = async function() { await signOut(auth); }
 
     window.registerPlayer = async function() {
         const name = document.getElementById("newName").value.trim();
         const mobile = document.getElementById("newMobile").value.trim();
+        const tag = document.getElementById("newTag").value.trim();
         if(!name || !mobile) return alert("Please fill fields!");
         try {
-            await setDoc(doc(db, "players", mobile), { name: name, mobile: mobile, win_count: 0, kill_count: 0, balance_rs: 0 });
-            document.getElementById("newName").value = ""; document.getElementById("newMobile").value = "";
+            await setDoc(doc(db, "players", mobile), { name: name, mobile: mobile, win_count: 0, kill_count: 0, deposit_rs: 0, balance_rs: 0, status: "Auto", tag: tag });
+            document.getElementById("newName").value = ""; document.getElementById("newMobile").value = ""; document.getElementById("newTag").value = "";
         } catch (e) { alert("Registration failed."); }
     }
 
@@ -285,10 +309,11 @@
             await updateDoc(doc(db, "players", mobile), {
                 win_count: increment(parseInt(document.getElementById("addWins").value) || 0),
                 kill_count: increment(parseInt(document.getElementById("addKills").value) || 0),
+                deposit_rs: increment(parseInt(document.getElementById("addDeposit").value) || 0),
                 balance_rs: increment(parseInt(document.getElementById("addBalance").value) || 0)
             });
             document.getElementById("updateMobile").value = ""; document.getElementById("addWins").value = "0";
-            document.getElementById("addKills").value = "0"; document.getElementById("addBalance").value = "0";
+            document.getElementById("addKills").value = "0"; document.getElementById("addDeposit").value = "0"; document.getElementById("addBalance").value = "0";
         } catch (e) { alert("Update failed."); }
     }
 </script>
