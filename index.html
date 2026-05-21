@@ -77,15 +77,24 @@
         </div>
 
         <div class="container-box" style="margin: 0;" id="updateSection">
-            <h3>2. Update Player Stats</h3>
+            <h3>2. Set Player Scores</h3>
             <input type="text" id="updateMobile" placeholder="Select player below..." readonly style="background:#222; color:#aaa;">
             <hr style="border: 0; border-top: 1px solid #333; margin: 15px 0;">
-            <label style="font-size: 14px; color: #aaa;">Enter amounts to ADD/SUBTRACT:</label>
-            <input type="number" id="addWins" placeholder="Add Win Count (use -1 to subtract)" value="0">
-            <input type="number" id="addKills" placeholder="Add Total Kills" value="0">
-            <input type="number" id="addDeposit" placeholder="Add Deposit Amount" value="0">
-            <input type="number" id="addBalance" placeholder="Add Balance in Rs" value="0">
-            <button onclick="updateStats()">Update Stats</button>
+            <label style="font-size: 14px; color: #ff8c00; font-weight: bold;">Enter absolute values to save:</label>
+            
+            <label style="font-size: 12px; color: #aaa;">Total Wins:</label>
+            <input type="number" id="setWins" placeholder="Wins total score" value="0">
+            
+            <label style="font-size: 12px; color: #aaa;">Total Kills:</label>
+            <input type="number" id="setKills" placeholder="Kills total score" value="0">
+            
+            <label style="font-size: 12px; color: #aaa;">Deposited Money (₹):</label>
+            <input type="number" id="setDeposit" placeholder="Deposit total money" value="0">
+            
+            <label style="font-size: 12px; color: #aaa;">Current Wallet Balance (₹):</label>
+            <input type="number" id="setBalance" placeholder="Balance total money" value="0">
+            
+            <button onclick="updateStats()">Save Exact Scores</button>
         </div>
 
         <div class="container-box" style="margin: 0; display: none; border-color: #4a90e2;" id="editSection">
@@ -143,7 +152,7 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-    import { doc, setDoc, updateDoc, increment, collection, onSnapshot, deleteDoc, getDoc, getFirestore } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+    import { doc, setDoc, updateDoc, collection, onSnapshot, deleteDoc, getDoc, getFirestore } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
     import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
     const firebaseConfig = {
@@ -180,7 +189,14 @@
             tbody.innerHTML = ""; 
             
             let dataArr = [];
-            snapshot.forEach((doc) => dataArr.push(doc.data()));
+            snapshot.forEach((doc) => {
+                const p = doc.data();
+                p.win_count = Number(p.win_count) || 0;
+                p.kill_count = Number(p.kill_count) || 0;
+                p.deposit_rs = Number(p.deposit_rs) || 0;
+                p.balance_rs = Number(p.balance_rs) || 0;
+                dataArr.push(p);
+            });
             dataArr.sort((a, b) => b.win_count - a.win_count);
 
             dataArr.forEach((player) => {
@@ -204,12 +220,12 @@
                     </td>
                     <td class="admin-player-mobile" style="color:#aaa;">${player.mobile}</td>
                     <td><span class="status-badge ${bgClass}">${displayStatus}</span></td>
-                    <td>${player.win_count || 0}</td>
-                    <td>${player.kill_count || 0}</td>
-                    <td>₹${player.deposit_rs || 0}</td>
-                    <td style="color: #4CAF50;">₹${player.balance_rs || 0}</td>
+                    <td>${player.win_count}</td>
+                    <td>${player.kill_count}</td>
+                    <td>₹${player.deposit_rs}</td>
+                    <td style="color: #4CAF50;">₹${player.balance_rs}</td>
                     <td class="action-group">
-                        <button class="action-btn btn-update" onclick="selectPlayerForUpdate('${player.mobile}')">Stats</button>
+                        <button class="action-btn btn-update" onclick="selectPlayerForUpdate('${player.mobile}', ${player.win_count}, ${player.kill_count}, ${player.deposit_rs}, ${player.balance_rs})">Stats</button>
                         <button class="action-btn btn-edit" onclick="selectPlayerForEdit('${player.mobile}', '${player.name}', '${player.status || 'Auto'}', '${player.tag || ''}')">Edit</button>
                         <button class="action-btn btn-delete" onclick="deletePlayer('${player.mobile}')">Del</button>
                     </td>
@@ -236,8 +252,13 @@
         }
     }
 
-    window.selectPlayerForUpdate = function(mobile) {
+    // Load active scores directly into the editing fields on select
+    window.selectPlayerForUpdate = function(mobile, wins, kills, deposit, balance) {
         document.getElementById("updateMobile").value = mobile;
+        document.getElementById("setWins").value = Number(wins);
+        document.getElementById("setKills").value = Number(kills);
+        document.getElementById("setDeposit").value = Number(deposit);
+        document.getElementById("setBalance").value = Number(balance);
         document.getElementById("updateSection").scrollIntoView({ behavior: 'smooth' });
     }
 
@@ -302,18 +323,24 @@
         } catch (e) { alert("Registration failed."); }
     }
 
+    // Direct override execution workflow safely parsing numeric integer formatting values 
     window.updateStats = async function() {
         const mobile = document.getElementById("updateMobile").value.trim();
         if(!mobile) return alert("Select player first!");
+        
         try {
             await updateDoc(doc(db, "players", mobile), {
-                win_count: increment(parseInt(document.getElementById("addWins").value) || 0),
-                kill_count: increment(parseInt(document.getElementById("addKills").value) || 0),
-                deposit_rs: increment(parseInt(document.getElementById("addDeposit").value) || 0),
-                balance_rs: increment(parseInt(document.getElementById("addBalance").value) || 0)
+                win_count: Number(document.getElementById("setWins").value) || 0,
+                kill_count: Number(document.getElementById("setKills").value) || 0,
+                deposit_rs: Number(document.getElementById("setDeposit").value) || 0,
+                balance_rs: Number(document.getElementById("setBalance").value) || 0
             });
-            document.getElementById("updateMobile").value = ""; document.getElementById("addWins").value = "0";
-            document.getElementById("addKills").value = "0"; document.getElementById("addDeposit").value = "0"; document.getElementById("addBalance").value = "0";
+            alert("Scores Overwritten Successfully!");
+            document.getElementById("updateMobile").value = ""; 
+            document.getElementById("setWins").value = "0";
+            document.getElementById("setKills").value = "0"; 
+            document.getElementById("setDeposit").value = "0"; 
+            document.getElementById("setBalance").value = "0";
         } catch (e) { alert("Update failed."); }
     }
 </script>
