@@ -46,6 +46,9 @@
         .btn-edit { background: #4a90e2; }
         .btn-delete { background: #e74c3c; }
         .action-btn:hover { opacity: 0.8; }
+        
+        /* Search Bar specific styling */
+        .search-bar { background: #222; border-color: #555; }
     </style>
 </head>
 <body>
@@ -97,6 +100,9 @@
 
     <div class="container-box list-box">
         <h3>Manage Registered Players</h3>
+        
+        <input type="text" id="adminSearchInput" class="search-bar" placeholder="🔍 Search players by Name or Mobile number..." onkeyup="searchAdminPlayer()">
+
         <table>
             <thead>
                 <tr>
@@ -152,6 +158,7 @@
 
     function loadAdminPlayerList() {
         const playersRef = collection(db, "players");
+        // We still fetch data in real-time
         unsubscribePlayers = onSnapshot(playersRef, (snapshot) => {
             const tbody = document.getElementById("adminPlayerList");
             tbody.innerHTML = ""; 
@@ -160,8 +167,8 @@
                 const player = doc.data();
                 const row = document.createElement("tr");
                 row.innerHTML = `
-                    <td><strong>${player.name}</strong></td>
-                    <td style="color:#aaa;">${player.mobile}</td>
+                    <td class="admin-player-name"><strong>${player.name}</strong></td>
+                    <td class="admin-player-mobile" style="color:#aaa;">${player.mobile}</td>
                     <td>${player.win_count}</td>
                     <td>${player.kill_count}</td>
                     <td style="color: #4CAF50;">₹${player.balance_rs}</td>
@@ -173,11 +180,34 @@
                 `;
                 tbody.appendChild(row);
             });
+            // Re-apply search filter in case data updates while user is searching
+            searchAdminPlayer();
         });
     }
 
-    // --- ACTIONS ---
+    // --- NEW SEARCH LOGIC FOR ADMIN ---
+    window.searchAdminPlayer = function() {
+        let filter = document.getElementById('adminSearchInput').value.toUpperCase();
+        let rows = document.getElementById("adminPlayerList").getElementsByTagName('tr');
 
+        for (let i = 0; i < rows.length; i++) {
+            let nameCell = rows[i].getElementsByClassName("admin-player-name")[0];
+            let mobileCell = rows[i].getElementsByClassName("admin-player-mobile")[0];
+            
+            if (nameCell || mobileCell) {
+                let name = nameCell.textContent || nameCell.innerText;
+                let mobile = mobileCell.textContent || mobileCell.innerText;
+                
+                if (name.toUpperCase().indexOf(filter) > -1 || mobile.indexOf(filter) > -1) {
+                    rows[i].style.display = "";
+                } else {
+                    rows[i].style.display = "none";
+                }
+            }       
+        }
+    }
+
+    // --- ACTIONS ---
     window.selectPlayerForUpdate = function(mobile) {
         document.getElementById("updateMobile").value = mobile;
         document.getElementById("updateSection").scrollIntoView({ behavior: 'smooth' });
@@ -197,11 +227,8 @@
 
     window.deletePlayer = async function(mobile) {
         if(confirm("Are you sure you want to delete this player? All data will be lost forever.")) {
-            try {
-                await deleteDoc(doc(db, "players", mobile));
-            } catch(e) {
-                alert("Error deleting player.");
-            }
+            try { await deleteDoc(doc(db, "players", mobile)); } 
+            catch(e) { alert("Error deleting player."); }
         }
     }
 
@@ -214,31 +241,26 @@
 
         try {
             if(oldMobile === newMobile) {
-                // Number is same, just update the name
                 await updateDoc(doc(db, "players", oldMobile), { name: newName });
             } else {
-                // Number changed! We must copy stats, create new doc, and delete old doc.
                 const oldDocRef = doc(db, "players", oldMobile);
                 const oldSnap = await getDoc(oldDocRef);
                 
                 if(oldSnap.exists()) {
                     const data = oldSnap.data();
                     data.name = newName;
-                    data.mobile = newMobile; // Update mobile in the payload
+                    data.mobile = newMobile; 
                     
-                    await setDoc(doc(db, "players", newMobile), data); // Create new
-                    await deleteDoc(oldDocRef); // Delete old
+                    await setDoc(doc(db, "players", newMobile), data); 
+                    await deleteDoc(oldDocRef); 
                 }
             }
             alert("Profile Updated Successfully!");
             document.getElementById("editSection").style.display = "none";
-        } catch(e) {
-            alert("Error updating profile.");
-        }
+        } catch(e) { alert("Error updating profile."); }
     }
 
     // --- EXISTING LOGIC ---
-
     window.loginAdmin = async function() {
         try { await signInWithEmailAndPassword(auth, document.getElementById("adminEmail").value, document.getElementById("adminPassword").value); } 
         catch (e) { alert("Login Failed"); }
